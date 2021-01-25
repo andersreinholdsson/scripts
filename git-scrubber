@@ -42,12 +42,12 @@ usage()
 	echo "repositories from the crontab and log results to file."
 	echo
 	      ################################################################################
-	echo "Scrubber will place a file named \"scrubber.lock\" inside the respective Git"
+	echo "git-crubber will place a file named \"scrubber.lock\" inside the respective Git"
 	echo "repository while checking it to prevent further scrubbing until current"
 	echo "scrubbing has finished. Scrubber will also try to execute using lowest possible"
 	echo "CPU and IO priority to minimize impact on system performance during scrubbing."
 	echo
-	echo "Example: scrubber /home/jeff/git/linux /home/jeff/logfile"
+	echo "Example: git-scrubber /home/jeff/git/linux /home/jeff/logfile"
 	echo
 	echo "Options:"
 	echo
@@ -68,7 +68,7 @@ usage()
 	echo "    logged to file. Debug information will still be printed if the [-d|--debug]"
 	echo "    option is enabled."
 	echo
-	echo "By Anders Reinholdsson 2017. Version 2020-01-24."
+	echo "By Anders Reinholdsson 2017. Version 2020-01-25."
 	exit 1
 }
 
@@ -237,7 +237,7 @@ for git_repo in $git_paths; do
 
 	elapsed_time=$(expr $end_time - $start_time)
 
-	if [ result ]; then
+	if [ $result ]; then
 		if [ "$print_flag" = true ]; then
 			printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "PASSED"
 		fi
