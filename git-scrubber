@@ -1,0 +1,262 @@
+#!/bin/bash
+################################################################################
+# Variable definitions
+################################################################################
+
+FORMAT="%-20s %-40s %9s  %s\n"
+LOCKFILE="scrubber.lock"
+logfile="/dev/null"
+debug_flag=false
+print_flag=true
+heading_flag=false
+git_paths=""
+git_repos=0
+
+################################################################################
+# Timestamp function
+################################################################################
+
+timestamp()
+{
+        date +"%Y-%m-%dT%H:%M:%S"
+}
+
+################################################################################
+# Print scrubber usage information
+################################################################################
+
+usage()
+{
+	      ################################################################################
+	echo "Usage: git-scrubber [options] <pathspec>... [logfile]"
+	echo
+	      ################################################################################
+	echo "git-scrubber is a bash script that looks in the supplied path(s) for Git"
+	echo "repositories and then executes the 'git fsck' command for each repository found."
+	echo "The result can be logged to a supplied logfile. git-scrubber will help you"
+	echo "maintain the integrity of one, or typically many, Git repositories by"
+	echo "simplifying the task of verifying, i.e. scrubbing, repository integrity."
+	echo
+	      ################################################################################
+	echo "Typical use case for git-scrubber is to schedule periodic scrubbing of Git"
+	echo "repositories from the crontab and log results to file."
+	echo
+	      ################################################################################
+	echo "Scrubber will place a file named \"scrubber.lock\" inside the respective Git"
+	echo "repository while checking it to prevent further scrubbing until current"
+	echo "scrubbing has finished. Scrubber will also try to execute using lowest possible"
+	echo "CPU and IO priority to minimize impact on system performance during scrubbing."
+	echo
+	echo "Example: scrubber /home/jeff/git/linux /home/jeff/logfile"
+	echo
+	echo "Options:"
+	echo
+	echo "-d, --debug"
+	echo "    Enable printing of debug information"
+	echo
+	echo "-h, --help"
+	echo "    Display this help text."
+	echo
+	echo "-p, --print-heading"
+	      ################################################################################
+	echo "    Print a results heading to standard output and logfile. Will only print to"
+	echo "    file with the [-q|--quiet] option."
+	echo
+	echo "-q, --quiet"
+	      ################################################################################
+	echo "    Do not print results. Useful in automated use of scrubber where results are"
+	echo "    logged to file. Debug information will still be printed if the [-d|--debug]"
+	echo "    option is enabled."
+	echo
+	echo "By Anders Reinholdsson 2017. Version 2020-01-24."
+	exit 1
+}
+
+################################################################################
+# Print advice on how to get help on usage of scrubber
+################################################################################
+
+tip()
+{
+	echo "Use 'scrubber -h' for help on usage."
+	exit 1
+}
+
+################################################################################
+# Print result heading
+################################################################################
+
+print_heading()
+{
+	if [ "$print_flag" = true ]; then
+		echo "--------------------------------------------------------------------------------"
+		printf "$FORMAT" "TIME" "REPOSITORY" "DURATION" "VERDICT"
+		echo "--------------------------------------------------------------------------------"
+	fi
+	echo "--------------------------------------------------------------------------------" >> $logfile
+	printf "$FORMAT" "TIME" "REPOSITORY" "DURATION" "VERDICT" >> $logfile
+	echo "--------------------------------------------------------------------------------" >> $logfile
+}
+
+################################################################################
+# Clean up lockfile during abort
+################################################################################
+
+ctrl_c()
+{
+	echo
+	echo "Aborted. Removing lockfile."
+	rm $LOCKFILE
+	exit 1
+}
+
+################################################################################
+# Trap control-c during exection to clean up lockfile
+################################################################################
+
+trap ctrl_c INT
+
+################################################################################
+# Parse command line flags passed
+################################################################################
+
+while true; do
+	case "$1" in
+		-d | --debug )
+			debug_flag=true
+			echo "Debug mode enabled."
+			shift
+			;;
+		-h | --help )
+			usage
+			shift
+			;;
+		-p | --print-heading )
+			heading_flag=true
+			if [ "$debug_flag" = true ]; then
+				echo "Heading printing enabled."
+			fi
+			shift
+			;;
+		-q | --quiet )
+			print_flag=false
+			if [ "$debug_flag" = true ]; then
+				echo "Quiet mode enabled."
+			fi
+			shift
+			;;
+		-* )
+			echo "Invalid argument \"$1\"."
+			tip
+			shift
+			;;
+		* )
+			if [ -d "$1" ]; then
+				path="$(realpath "$1")"
+				if [ -d "$path/.git" ] || [ -f "$path/config" ]; then
+					git_paths+="$path/ "
+					((git_repos++))
+				else
+					echo "No Git repository found in path \"$path\". Exiting."
+					tip
+				fi
+			else
+				if [ "$1" = "" ]; then
+					if [ $git_repos -eq 0 ]; then
+						echo "No Git repository paths provided. Exiting."
+						tip
+					else
+						break
+					fi
+				else
+					logfile="$(realpath "$1")"
+					if [ "$debug_flag" = true ]; then
+						echo "Using logfile \"$logfile\"."
+					fi
+				fi
+			fi
+			shift
+			;;
+	esac
+done
+
+################################################################################
+# Print heading if requested
+################################################################################
+
+if [ "$heading_flag" = true ]; then
+	if [ "$debug_flag" = true ]; then
+		echo "Printing heading..."
+	fi
+	print_heading
+fi
+
+################################################################################
+# Print number of Git repositories found if requested.
+################################################################################
+
+if [ "$debug_flag" = true ]; then
+	echo "Found $git_repos Git repositorie(s):"
+	echo "$git_paths" # | tr " " "\n"
+fi
+
+################################################################################
+# Check each passed Git repository
+################################################################################
+
+for git_repo in $git_paths; do
+	cd $git_repo
+
+	if [ "$debug_flag" = true ]; then
+		echo "Checking for lockfile..."
+	fi
+
+	if [ -f $LOCKFILE ]; then
+		if [ "$print_flag" = true ]; then
+			printf "$FORMAT" "$(timestamp)" "$git_repo" "0 sec" "LOCKED"
+		fi
+		printf "$FORMAT" "$(timestamp)" "$git_repo" "0 sec" "LOCKED" >> $logfile
+		continue
+	fi
+
+	if [ "$debug_flag" = true ]; then
+		echo "Creating lockfile..."
+	fi
+
+	touch $LOCKFILE
+
+	if [ "$debug_flag" = true ]; then
+		echo "Starting scrub of $git_repo..."
+	fi
+
+	start_time=$(date +"%s")
+
+	result=$(nice ionice -c 3 git fsck > /dev/null 2>&1)
+
+	end_time=$(date +"%s")
+
+	elapsed_time=$(expr $end_time - $start_time)
+
+	if [ result ]; then
+		if [ "$print_flag" = true ]; then
+			printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "PASSED"
+		fi
+		printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "PASSED" >> $logfile
+	else
+		if [ "$print_flag" = true ]; then
+			printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "FAILED"
+		fi
+		printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "FAILED" >> $logfile
+		break
+	fi
+
+	if [ "$debug_flag" = true ]; then
+		echo "Removing lockfile..."
+	fi
+
+	rm $LOCKFILE
+
+done
+
+################################################################################
+################################################################################
