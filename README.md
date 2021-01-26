@@ -50,10 +50,10 @@ git-scrubber [options] <pathspec>... [logfile]
 
 ### Example
 
-Below is an example of git-scrubber usage:
+Below is an example of git-scrubber usage with two git repositories 'linux' and 'foss' storing the result in a logfile named 'logfile':
 
 ```
-git-scrubber -p /home/jeff/git/linux /home/jeff/logfile
+git-scrubber -p /home/jeff/git/linux /home/jeff/git/foss /home/jeff/logfile
 ```
 
 This would normally produce the following output to stdout and to the supplied logfile:
@@ -63,17 +63,29 @@ This would normally produce the following output to stdout and to the supplied l
 TIME                 REPOSITORY                                DURATION  VERDICT
 --------------------------------------------------------------------------------
 2021-01-25T22:46:46  /home/jeff/git/linux/                        3 sec  PASSED
+2021-01-25T22:46:49  /home/jeff/git/foss/                        10 sec  PASSED
 ```
 
-If there are errors found the output could look like this:
+If there are errors found in one of the repositories scrubbed the output could look like this:
 
 ```
 --------------------------------------------------------------------------------
 TIME                 REPOSITORY                                DURATION  VERDICT
 --------------------------------------------------------------------------------
 2021-01-25T22:46:46  /home/jeff/git/linux/                        3 sec  FAILED
+2021-01-25T22:46:49  /home/jeff/git/foss/                        10 sec  PASSED
 ```
 
 At this point it would be suitable to run a manual 'git fsck' iside the failed
 repository and investigate the output. Restoring affected files from backup
 would be a likely next step.
+
+Subsequent runs of git-scrubber would skip scrubbing of the failed repo(s), showing 'LOCKED' status to avoid further touching the possibly corrupted files. To allow git-scrubber to scrub the respetive repos again simply remove the enclosing 'scrubber.lock' file(s).
+
+```
+--------------------------------------------------------------------------------
+TIME                 REPOSITORY                                DURATION  VERDICT
+--------------------------------------------------------------------------------
+2021-01-25T23:46:46  /home/jeff/git/linux/                        3 sec  LOCKED
+2021-01-25T23:46:49  /home/jeff/git/foss/                        10 sec  PASSED
+```
