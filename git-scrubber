@@ -68,7 +68,7 @@ usage()
 	echo "    logged to file. Debug information will still be printed if the [-d|--debug]"
 	echo "    option is enabled."
 	echo
-	echo "By Anders Reinholdsson 2017. Version 2020-01-25."
+	echo "By Anders Reinholdsson 2017. Version 2020-01-26."
 	exit 1
 }
 
@@ -231,13 +231,14 @@ for git_repo in $git_paths; do
 
 	start_time=$(date +"%s")
 
-	result=$(nice ionice -c 3 git fsck > /dev/null 2>&1)
+	nice ionice -c 3 git fsck > /dev/null 2>&1
+	result=$?
 
 	end_time=$(date +"%s")
 
 	elapsed_time=$(expr $end_time - $start_time)
 
-	if [ $result ]; then
+	if [ $result -eq 0 ]; then
 		if [ "$print_flag" = true ]; then
 			printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "PASSED"
 		fi
@@ -247,7 +248,7 @@ for git_repo in $git_paths; do
 			printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "FAILED"
 		fi
 		printf "$FORMAT" "$(timestamp)" "$git_repo" "$elapsed_time sec" "FAILED" >> $logfile
-		break
+		continue
 	fi
 
 	if [ "$debug_flag" = true ]; then
